@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include "sio.h"
 
 /* Misc manifest constants */
 #define MAXLINE    1024   /* max line size */
@@ -82,6 +83,7 @@ void listjobs(struct job_t *jobs);
 void usage(void);
 void unix_error(char *msg);
 void app_error(char *msg);
+
 typedef void handler_t(int);
 handler_t *Signal(int signum, handler_t *handler);
 
@@ -165,6 +167,59 @@ int main(int argc, char **argv)
 */
 void eval(char *cmdline) 
 {
+    char *argv[MAXARGS];    /* Argument list */
+    char buf[MAXLINE];      /* Holds modified command line */
+    int bg;                 /* Should the job run in bg or fg? */
+    int state;
+    pid_t pid, jid;
+    sigset_t mask_all, mask_one, prev_one;
+
+    strcpy(buf, cmdline);
+    if ((bg = parseline(cmdline, argv)) != 0) {
+        state = BG;
+    } else
+        state = FG;
+
+    if (argv[0] == NULL)
+        return;              /* Ignore command "&" */
+    
+    sigfillset(&mask_all);
+    sigemptyset(&mask_one);
+    sigaddset(&mask_one, SIGCHLD);
+    
+    if(builtin_cmd(argv) == 1) {
+        if (sigprocmask(SIG_BLOCK, &mask_one, &prev_one) < 0)   /* Block SIGCHILD */
+            unix_error ("Sigprocmask error");    
+        if ((pid = fork()) < 0) {
+            unix_error ("Fork error");
+        } else if (pid == 0) {  
+            /* Child process */
+            if (sigprocmask(SIG_SETMASK, &prev_one, NULL) < 0)  /* Restore blocked set */
+                unix_error("Sigprocmask error");
+            setpgid (0, 0);  /* Set unique process group ID for child process */
+
+            if (execve(argv[0], argv, environ) < 0) {
+                fprintf (stderr, "%s: Command not found\n", argv[0]);
+            }
+        }
+        
+        /* Parent process
+            - Remove race condition with handler's delete job by blocking SIGCHLD */
+        if (sigprocmask(SIG_BLOCK, &mask_all, NULL) < 0)    /* Block All */
+            unix_error ("Sigprocmask error");
+
+        addjob(jobs, pid, state, cmdline);
+        jid = getjobpid(jobs, pid)->jid;
+
+        if (sigprocmask(SIG_SETMASK, &prev_one, NULL) < 0)  /* Restore blocked set */
+            unix_error ("Sigprocmask error");
+
+        /* Parent waits for foreground job to terminate */
+        if (!bg)
+            waitfg(pid);
+        else
+            printf("[%d] (%d) %s", jid, pid, cmdline);
+    }
     return;
 }
 
@@ -193,6 +248,10 @@ int parseline(const char *cmdline, char **argv)
     if (*buf == '\'') {
 	buf++;
 	delim = strchr(buf, '\'');
+    if (delim == NULL) {
+        app_error ("Error: Missing closing quote\n");
+        return -1;
+    }
     }
     else {
 	delim = strchr(buf, ' ');
@@ -208,6 +267,10 @@ int parseline(const char *cmdline, char **argv)
 	if (*buf == '\'') {
 	    buf++;
 	    delim = strchr(buf, '\'');
+        if (delim == NULL) {
+            app_error ("Error: Missing closing quote\n");
+            return -1;
+        }
 	}
 	else {
 	    delim = strchr(buf, ' ');
@@ -231,7 +294,25 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv) 
 {
-    return 0;     /* not a builtin command */
+    sigset_t mask_all, prev_one;
+    if (sigfillset(&mask_all) < 0)
+        unix_error ("Sigfillset error");
+
+    if (!strcmp(argv[0], "quit"))
+        exit(0);
+    if (!strcmp(argv[0], "fg") || !strcmp(argv[0], "bg")) {
+        do_bgfg(argv);
+        return 0;
+    }
+    if (!strcmp(argv[0], "jobs")) {
+        if (sigprocmask(SIG_BLOCK, &mask_all, &prev_one) < 0)   /* Block All */
+            unix_error ("Sigprocmask error");
+        listjobs (jobs);
+        if (sigprocmask(SIG_SETMASK, &prev_one, NULL) < 0)  /* Restore blocked set */
+            unix_error ("Sigprocmask error");
+        return 0;
+    }
+    return 1;     /* not a builtin command */
 }
 
 /* 
@@ -239,6 +320,76 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
+    pid_t pid;
+    struct job_t *job;
+    sigset_t mask_all, prev_one;
+
+    if (sigfillset(&mask_all) == -1) {
+        unix_error("Sigfillset error");
+    }
+
+    if (argv[1] == NULL) {
+        fprintf(stderr, "%s command requires PID or %%jobid argument\n", argv[0]);
+        return;
+    }
+
+    /* JID or PID */
+    if (argv[1][0] == '%') {
+        int jid;
+        if ((jid = atoi(&argv[1][1])) == 0) {
+            fprintf (stderr, "%s: argument must be a PID or %%jobid\n", argv[0]);
+            return;
+        }
+        if (sigprocmask(SIG_BLOCK, &mask_all, &prev_one) < 0)   /* Block All */
+            unix_error ("Sigprocmask error");
+        job = getjobjid(jobs, jid);
+        if (sigprocmask(SIG_SETMASK, &prev_one, NULL) < 0)  /* Restore blocked set */
+            unix_error ("Sigprocmask error");
+        if (job == NULL) {
+            fprintf (stderr, "%%%d: No such job\n", jid);
+            return;
+        }
+
+        if (sigprocmask(SIG_BLOCK, &mask_all, &prev_one) < 0)   /* Block All */
+            unix_error ("Sigprocmask error");
+        pid = job->pid;
+        if (sigprocmask(SIG_SETMASK, &prev_one, NULL) < 0)  /* Restore blocked set */
+            unix_error ("Sigprocmask error");
+
+    } else {
+        if ((pid = atoi(argv[1])) == 0) {
+            fprintf (stderr, "%s: argument must be a PID or %%jobid\n", argv[0]);
+            return;
+        }
+
+        if (sigprocmask(SIG_BLOCK, &mask_all, &prev_one) < 0)   /* Block All */
+            unix_error ("Sigprocmask error");
+        job = getjobpid(jobs, pid);
+        if (sigprocmask(SIG_SETMASK, &prev_one, NULL) < 0)  /* Restore blocked set */
+            unix_error ("Sigprocmask error");
+        if (job == NULL) {
+            fprintf (stderr, "(%d): No such process\n", pid);
+            return;
+        }
+    }
+
+    if (sigprocmask(SIG_BLOCK, &mask_all, &prev_one) < 0)   /* Block All */
+        unix_error ("Sigprocmask error");
+    job->state = (!strcmp(argv[0], "fg")) ? FG : BG;
+
+    if (kill(-pid, SIGCONT) < 0)
+        unix_error("Kill (SIGCONT) error");
+
+    if (job->state == FG) {
+        if (sigprocmask(SIG_SETMASK, &prev_one, NULL) < 0)  /* Restore blocked set */
+            unix_error ("Sigprocmask error");
+        waitfg(pid);
+    } else {
+        if (sigprocmask(SIG_SETMASK, &prev_one, NULL) < 0)  /* Restore blocked set */
+            unix_error ("Sigprocmask error");
+        printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+    }
+    
     return;
 }
 
@@ -247,6 +398,22 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
+    struct job_t *job;
+    sigset_t mask_one, prev_one;
+
+    sigemptyset(&mask_one);
+    sigaddset(&mask_one, SIGCHLD);
+
+    if (sigprocmask(SIG_BLOCK, &mask_one, &prev_one) < 0)  /* Save prev_one */
+        unix_error ("Sigprocmask error");  
+    if ((job = getjobpid(jobs, pid)) == NULL)
+        app_error ("No such job");
+    while (job->state == FG) {
+        sigsuspend(&prev_one);  /* Unblock prev_one temporarily */
+    }
+    if (sigprocmask(SIG_SETMASK, &prev_one, NULL) < 0)  /* Restore blocked set */
+        unix_error ("Sigprocmask error");
+
     return;
 }
 
@@ -263,6 +430,43 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
+    int olderrno = errno;           /* Store errno */
+    sigset_t mask_all, prev_all;
+    pid_t pid;
+    int status;
+    struct job_t *job;
+
+    if (sigfillset(&mask_all) < 0)
+        sio_error("Sigfillset error");
+
+    /* Reap zombie children including background process */
+    while ((pid = waitpid (-1, &status, WNOHANG | WUNTRACED)) > 0) {     
+           
+        /* Block all signals before accessing global data structure */
+        if (sigprocmask (SIG_BLOCK, &mask_all, &prev_all) < 0)
+            sio_error ("Sigprocmask error");
+
+        if ((job = getjobpid(jobs, pid)) == NULL)
+            sio_error ("Getjobpid error in sigchld_handler");
+ 
+        if (WIFEXITED(status))
+            deletejob(jobs, pid);
+        else if (WIFSIGNALED(status)) {
+            printf("Job [%d] (%d) terminated by signal %d\n", job->jid, pid, WTERMSIG(status));
+            deletejob(jobs, pid);
+        } else if (WIFSTOPPED(status)) {
+            printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, WSTOPSIG(status));
+            job->state = ST;
+        }
+
+        /* Restore blocked set */
+        if (sigprocmask (SIG_SETMASK, &prev_all, NULL) < 0)
+            sio_error ("Sigprocmask error");
+    }
+    if (pid == -1 && errno != ECHILD)   // pid가 -1인지도 체크해야 함
+        sio_error ("waitpid error");
+
+    errno = olderrno;               /* Restore errno */
     return;
 }
 
@@ -273,6 +477,28 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
+    pid_t pid;
+    sigset_t mask_all, prev_all;
+
+    if (sigfillset(&mask_all) < 0)
+        sio_error ("Sigaddset error");
+
+    if (sigprocmask(SIG_BLOCK, &mask_all, &prev_all) < 0)
+        sio_error("Sigprocmask error");
+
+    if ((pid = fgpid(jobs)) <= 0) {
+        if (sigprocmask(SIG_SETMASK, &prev_all, NULL) < 0)
+            sio_error("Sigprocmask error");
+        return;
+        // sio_error("No foreground job running\n");
+    }
+    
+    if (kill(-pid, sig) < 0)
+        sio_error ("Kill error");
+    
+    if (sigprocmask(SIG_SETMASK, &prev_all, NULL) < 0)
+        sio_error("Sigprocmask error");
+        
     return;
 }
 
@@ -283,6 +509,28 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
+    pid_t pid;
+    sigset_t mask_all, prev_all;
+
+    if (sigfillset(&mask_all) < 0)
+        sio_error ("Sigaddset error");
+
+    if (sigprocmask(SIG_BLOCK, &mask_all, &prev_all) < 0)
+        sio_error("Sigprocmask error");
+
+    if ((pid = fgpid(jobs)) <= 0) {
+        if (sigprocmask(SIG_SETMASK, &prev_all, NULL) < 0)
+            sio_error("Sigprocmask error");
+        // sio_error("No foreground job running\n");
+        return;
+    }
+    
+    if (kill(-pid, sig) < 0)
+        sio_error ("Kill error");
+    
+    if (sigprocmask(SIG_SETMASK, &prev_all, NULL) < 0)
+        sio_error("Sigprocmask error");
+    
     return;
 }
 
@@ -504,6 +752,3 @@ void sigquit_handler(int sig)
     printf("Terminating after receipt of SIGQUIT signal\n");
     exit(1);
 }
-
-
-
