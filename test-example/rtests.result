@@ -1,0 +1,218 @@
+#
+# trace01.txt - Properly terminate on EOF.
+#
+#
+# trace02.txt - Process builtin quit command.
+#
+#
+# trace03.txt - Run a foreground job.
+#
+tsh> quit
+#
+# trace04.txt - Run a background job.
+#
+tsh> ./myspin 1 &
+[1] (22139) ./myspin 1 &
+#
+# trace05.txt - Process jobs builtin command.
+#
+tsh> ./myspin 2 &
+[1] (22157) ./myspin 2 &
+tsh> ./myspin 3 &
+[2] (22159) ./myspin 3 &
+tsh> jobs
+[1] (22157) Running ./myspin 2 &
+[2] (22159) Running ./myspin 3 &
+#
+# trace06.txt - Forward SIGINT to foreground job.
+#
+tsh> ./myspin 4
+Job [1] (22202) terminated by signal 2
+#
+# trace07.txt - Forward SIGINT only to foreground job.
+#
+tsh> ./myspin 4 &
+[1] (22207) ./myspin 4 &
+tsh> ./myspin 5
+Job [2] (22209) terminated by signal 2
+tsh> jobs
+[1] (22207) Running ./myspin 4 &
+#
+# trace08.txt - Forward SIGTSTP only to foreground job.
+#
+tsh> ./myspin 4 &
+[1] (22244) ./myspin 4 &
+tsh> ./myspin 5
+Job [2] (22246) stopped by signal 20
+tsh> jobs
+[1] (22244) Running ./myspin 4 &
+[2] (22246) Stopped ./myspin 5 
+#
+# trace09.txt - Process bg builtin command
+#
+tsh> ./myspin 4 &
+[1] (22276) ./myspin 4 &
+tsh> ./myspin 5
+Job [2] (22278) stopped by signal 20
+tsh> jobs
+[1] (22276) Running ./myspin 4 &
+[2] (22278) Stopped ./myspin 5 
+tsh> bg %2
+[2] (22278) ./myspin 5 
+tsh> jobs
+[1] (22276) Running ./myspin 4 &
+[2] (22278) Running ./myspin 5 
+#
+# trace10.txt - Process fg builtin command. 
+#
+tsh> ./myspin 4 &
+[1] (22310) ./myspin 4 &
+tsh> fg %1
+Job [1] (22310) stopped by signal 20
+tsh> jobs
+[1] (22310) Stopped ./myspin 4 &
+tsh> fg %1
+tsh> jobs
+#
+# trace11.txt - Forward SIGINT to every process in foreground process group
+#
+tsh> ./mysplit 4
+Job [1] (22334) terminated by signal 2
+tsh> /bin/ps a
+    PID TTY      STAT   TIME COMMAND
+    454 ttyS0    Ss+    0:00 /sbin/agetty -o -p -- \u --keep-baud 115200,57600,38400,9600 ttyS0 vt220
+    476 tty1     Ss+    0:00 /sbin/agetty -o -p -- \u --noclear tty1 linux
+   1057 pts/0    Ss+    0:00 /bin/bash --init-file /home/ubuntu/.vscode-server/cli/servers/Stable-cd4ee3b1c348a13bafd8f9ad8060705f6d4b9cba/server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
+   7023 pts/1    Ss     0:00 /bin/bash --init-file /home/ubuntu/.vscode-server/cli/servers/Stable-cd4ee3b1c348a13bafd8f9ad8060705f6d4b9cba/server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
+  19888 pts/1    S      0:00 ./tsh -p
+  19890 pts/1    Z      0:00 [myspin] <defunct>
+  22124 pts/1    S+     0:00 make rtests.result
+  22330 pts/1    S+     0:00 /bin/sh -c ./sdriver.pl -t trace11.txt -s ./tshref -a "-p" >> ./rtests.result
+  22331 pts/1    S+     0:00 /usr/bin/perl ./sdriver.pl -t trace11.txt -s ./tshref -a -p
+  22332 pts/1    S+     0:00 ./tshref -p
+  22346 pts/1    R      0:00 /bin/ps a
+#
+# trace12.txt - Forward SIGTSTP to every process in foreground process group
+#
+tsh> ./mysplit 4
+Job [1] (22351) stopped by signal 20
+tsh> jobs
+[1] (22351) Stopped ./mysplit 4 
+tsh> /bin/ps a
+    PID TTY      STAT   TIME COMMAND
+    454 ttyS0    Ss+    0:00 /sbin/agetty -o -p -- \u --keep-baud 115200,57600,38400,9600 ttyS0 vt220
+    476 tty1     Ss+    0:00 /sbin/agetty -o -p -- \u --noclear tty1 linux
+   1057 pts/0    Ss+    0:00 /bin/bash --init-file /home/ubuntu/.vscode-server/cli/servers/Stable-cd4ee3b1c348a13bafd8f9ad8060705f6d4b9cba/server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
+   7023 pts/1    Ss     0:00 /bin/bash --init-file /home/ubuntu/.vscode-server/cli/servers/Stable-cd4ee3b1c348a13bafd8f9ad8060705f6d4b9cba/server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
+  19888 pts/1    S      0:00 ./tsh -p
+  19890 pts/1    Z      0:00 [myspin] <defunct>
+  22124 pts/1    S+     0:00 make rtests.result
+  22347 pts/1    S+     0:00 /bin/sh -c ./sdriver.pl -t trace12.txt -s ./tshref -a "-p" >> ./rtests.result
+  22348 pts/1    S+     0:00 /usr/bin/perl ./sdriver.pl -t trace12.txt -s ./tshref -a -p
+  22349 pts/1    S+     0:00 ./tshref -p
+  22351 pts/1    T      0:00 ./mysplit 4
+  22352 pts/1    T      0:00 ./mysplit 4
+  22356 pts/1    R      0:00 /bin/ps a
+#
+# trace13.txt - Restart every stopped process in process group
+#
+tsh> ./mysplit 4
+Job [1] (22370) stopped by signal 20
+tsh> jobs
+[1] (22370) Stopped ./mysplit 4 
+tsh> /bin/ps a
+    PID TTY      STAT   TIME COMMAND
+    454 ttyS0    Ss+    0:00 /sbin/agetty -o -p -- \u --keep-baud 115200,57600,38400,9600 ttyS0 vt220
+    476 tty1     Ss+    0:00 /sbin/agetty -o -p -- \u --noclear tty1 linux
+   1057 pts/0    Ss+    0:00 /bin/bash --init-file /home/ubuntu/.vscode-server/cli/servers/Stable-cd4ee3b1c348a13bafd8f9ad8060705f6d4b9cba/server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
+   7023 pts/1    Ss     0:00 /bin/bash --init-file /home/ubuntu/.vscode-server/cli/servers/Stable-cd4ee3b1c348a13bafd8f9ad8060705f6d4b9cba/server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
+  19888 pts/1    S      0:00 ./tsh -p
+  19890 pts/1    Z      0:00 [myspin] <defunct>
+  22124 pts/1    S+     0:00 make rtests.result
+  22360 pts/1    S+     0:00 /bin/sh -c ./sdriver.pl -t trace13.txt -s ./tshref -a "-p" >> ./rtests.result
+  22361 pts/1    S+     0:00 /usr/bin/perl ./sdriver.pl -t trace13.txt -s ./tshref -a -p
+  22368 pts/1    S+     0:00 ./tshref -p
+  22370 pts/1    T      0:00 ./mysplit 4
+  22371 pts/1    T      0:00 ./mysplit 4
+  22379 pts/1    R      0:00 /bin/ps a
+tsh> fg %1
+tsh> /bin/ps a
+    PID TTY      STAT   TIME COMMAND
+    454 ttyS0    Ss+    0:00 /sbin/agetty -o -p -- \u --keep-baud 115200,57600,38400,9600 ttyS0 vt220
+    476 tty1     Ss+    0:00 /sbin/agetty -o -p -- \u --noclear tty1 linux
+   1057 pts/0    Ss+    0:00 /bin/bash --init-file /home/ubuntu/.vscode-server/cli/servers/Stable-cd4ee3b1c348a13bafd8f9ad8060705f6d4b9cba/server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
+   7023 pts/1    Ss     0:00 /bin/bash --init-file /home/ubuntu/.vscode-server/cli/servers/Stable-cd4ee3b1c348a13bafd8f9ad8060705f6d4b9cba/server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
+  19888 pts/1    S      0:00 ./tsh -p
+  19890 pts/1    Z      0:00 [myspin] <defunct>
+  22124 pts/1    S+     0:00 make rtests.result
+  22360 pts/1    S+     0:00 /bin/sh -c ./sdriver.pl -t trace13.txt -s ./tshref -a "-p" >> ./rtests.result
+  22361 pts/1    S+     0:00 /usr/bin/perl ./sdriver.pl -t trace13.txt -s ./tshref -a -p
+  22368 pts/1    S+     0:00 ./tshref -p
+  22382 pts/1    R      0:00 /bin/ps a
+#
+# trace14.txt - Simple error handling
+#
+tsh> ./bogus
+./bogus: Command not found
+tsh> ./myspin 4 &
+[1] (22389) ./myspin 4 &
+tsh> fg
+fg command requires PID or %jobid argument
+tsh> bg
+bg command requires PID or %jobid argument
+tsh> fg a
+fg: argument must be a PID or %jobid
+tsh> bg a
+bg: argument must be a PID or %jobid
+tsh> fg 9999999
+(9999999): No such process
+tsh> bg 9999999
+(9999999): No such process
+tsh> fg %2
+%2: No such job
+tsh> fg %1
+Job [1] (22389) stopped by signal 20
+tsh> bg %2
+%2: No such job
+tsh> bg %1
+[1] (22389) ./myspin 4 &
+tsh> jobs
+[1] (22389) Running ./myspin 4 &
+#
+# trace15.txt - Putting it all together
+#
+tsh> ./bogus
+./bogus: Command not found
+tsh> ./myspin 10
+Job [1] (22434) terminated by signal 2
+tsh> ./myspin 3 &
+[1] (22450) ./myspin 3 &
+tsh> ./myspin 4 &
+[2] (22452) ./myspin 4 &
+tsh> jobs
+[1] (22450) Running ./myspin 3 &
+[2] (22452) Running ./myspin 4 &
+tsh> fg %1
+Job [1] (22450) stopped by signal 20
+tsh> jobs
+[1] (22450) Stopped ./myspin 3 &
+[2] (22452) Running ./myspin 4 &
+tsh> bg %3
+%3: No such job
+tsh> bg %1
+[1] (22450) ./myspin 3 &
+tsh> jobs
+[1] (22450) Running ./myspin 3 &
+[2] (22452) Running ./myspin 4 &
+tsh> fg %1
+tsh> quit
+#
+# trace16.txt - Tests whether the shell can handle SIGTSTP and SIGINT
+#     signals that come from other processes instead of the terminal.
+#
+tsh> ./mystop 2
+Job [1] (22477) stopped by signal 20
+tsh> jobs
+[1] (22477) Stopped ./mystop 2
+tsh> ./myint 2
+Job [2] (22507) terminated by signal 2
