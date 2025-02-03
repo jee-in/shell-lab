@@ -6,12 +6,17 @@ HANDINDIR = /afs/cs/academic/class/15213-f02/L5/handin
 DRIVER = ./sdriver.pl
 TSH = ./tsh
 TSHREF = ./tshref
+PROGRAMS = ./myspin ./mysplit ./mystop ./myint
 TSHARGS = "-p"
 CC = gcc
 CFLAGS = -Wall -O2
-FILES = ./myspin ./mysplit ./mystop ./myint
 
-all: $(FILES)
+all: programs tsh
+
+programs: $(PROGRAMS)
+
+tsh:
+	$(CC) $(CFLAGS) -I./include -o $(TSH) ./tsh.c lib/sio.c
 
 ##################
 # Handin your work
@@ -95,6 +100,6 @@ rtest16:
 
 # clean up
 clean:
-	rm -f $(FILES) *.o *~
+	rm -f $(PROGRAMS) *.o *~
 
 
