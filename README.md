@@ -42,21 +42,21 @@ Unix Shell Lab 과제의 목표는 교재 `CS:APP (Computer System: As a Program
 ### 1. `make`
 `tsh.c`에 구현한 Tiny Shell을 실행하고, 테스트를 진행하기 위해서는 `make` 명령어를 통해 소스 코드를 실행 가능한 파일로 빌드해야 합니다. `make` 명령어는`tsh.c` 파일과 테스트용 프로그램인 `myint.c`, `myspin.c`, `mysplit.c`, `mystop.c`을 빌드하는 명령어입니다.
 
-```Shell
+```shell
 # make를 입력하면 수행되는 명령어 예시
 gcc -Wall -O2  -I./include   tsh.c  lib/sio.c   -o tsh 
 gcc -Wall -O2                myspin.c           -o myspin
 ```
 
 빌드를 마친 후 커맨드 라인에 `./tsh`를 입력하면 `tsh.c`에 구현한 shell 프로그램을 실행시킬 수 있습니다.
-```Shell
+```shell
 ./tsh
 ```
 
 ### 2. `make test01` / `make rtest01`
 테스트 드라이버 파일 `sdriver.pl`이 `tsh` / `tshref` (레퍼런스 Shell 실행 파일)에서 테스트 케이스인 `trace01`~`trace16`을 실행시키게 만드는 명령어입니다. `tsh.c`를 올바르게 잘 작성했는지 확인하기 위해 사용합니다.
 
-```Shell
+```shell
 # make test01 을 입력하면 수행되는 명령어 예시
 ./sdriver.pl -t trace01.txt -s ./tsh    -a "-p"
 
@@ -68,7 +68,7 @@ gcc -Wall -O2                myspin.c           -o myspin
 
 ### 3. `make test01.result`, `make rtest01.result`
 `make test01` / `make rtest01`의 출력 결과를 터미널로 출력하지 않고 파일에 저장하는 명령어입니다.
-```Shell
+```shell
 # make test01.result 을 입력하면 수행되는 명령어 예시
 make test01.result > ./test01.result
 
@@ -78,12 +78,12 @@ make rtest01.result > ./rtest01.result
 
 ### 4. `make test01.diff`
 `make test01.result`과 `make rtest01.result`를 실행시킨 뒤 출력 결과인 `./test01.result`과 `./rtest01.result`의 차이를 터미널에 출력하는 명령어입니다. 
-```Shell
+```shell
 # make test01.diff를 입력하면 수행되는 명령어 예시
 diff -u ./rtest01.result ./test01.result || (echo "$(MSG)"; exit 0)
 ```
 터미널 출력 결과를 파일로 리다이렉션하고 싶다면 커맨드 라인에 다음과 같이 입력하면 됩니다.
-```Shell
+```shell
 make test01.diff > test01.diff
 ```
 
@@ -116,7 +116,7 @@ make test01.diff > test01.diff
 
   [ ✔️ ] 자식 프로세스를 `fork` 하고 `execve` 한다.
 
-  ```C
+  ```c
   /* Block SIGCHILD */
   if (sigprocmask(SIG_BLOCK, &mask_one, &prev_one) < 0)
       unix_error ("Sigprocmask error");
@@ -160,7 +160,7 @@ make test01.diff > test01.diff
   - foreground에서 프로세스를 실행할 경우 프로세스가 종료/중단/백그라운드로 이동할 때까지 sleep한다.
 
 ### 2. 함수 builtin-cmd 구현하기
-```C
+```c
 int builtin_cmd(char **argv) 
 {
     sigset_t mask_all, prev_one;
@@ -190,7 +190,7 @@ int builtin_cmd(char **argv)
 ### 3. 함수 do_bgfg 구현하기  
  [ ✔️ ] `fg` 또는 `bg` 다음에 `%{JID}`가 오는지 `{PID}`가 오는지 확인하여 적절히 처리하기  
  [ ✔️ ]  명령어에 따라 job의 상태 바꾸기
-  ```C
+  ```c
   /* Block all signals before accessing global data structure */
     if (sigprocmask(SIG_BLOCK, &mask_all, &prev_one) < 0)
         unix_error ("Sigprocmask error");
@@ -222,7 +222,7 @@ int builtin_cmd(char **argv)
 [ ✔️ ] `SIGCHLD` 시그널을 차단한 채로 job이 foreground에서 실행 중인지 while 문으로 확인한다.  
 [ ✔️ ] job이 foreground에서 실행 중이라면 시그널이 올 때까지 sleep한다. (일시적으로 `SIGCHLD` 차단 해제)
 
-```C
+```c
 void waitfg(pid_t pid)
 {
     struct job_t *job;
@@ -254,7 +254,7 @@ void waitfg(pid_t pid)
 [ ✔️ ] 정상/비정상 종료 프로세스는 `deletejob`으로 `jobs`에서 삭제한다.  
 [ ✔️ ] 중단 프로세스는 job의 상태를 업데이트한다. 
 
-```C
+```c
 void sigchld_handler(int sig) 
 {
     int olderrno = errno;           /* Store errno */
@@ -301,7 +301,7 @@ void sigchld_handler(int sig)
 ### 6. 함수 sigint_handler 구현하기
 [ ✔️ ] 사용자가 ctrl-c 를 입력하면 `./tsh`는 `SIGINT` 시그널을 캐치해서 적절한 foreground job에게 포워딩한다.
 
-```C
+```c
 void sigint_handler(int sig) 
 {
     pid_t pid;
@@ -338,7 +338,7 @@ void sigint_handler(int sig)
 
 [ ✔️ ] 사용자가 ctrl-z 을 입력하면 `./tsh`는 `SIGTSTP` 시그널을 캐치해서 적절한 foreground job에게 포워딩한다.
 
-```C
+```c
 void sigtstp_handler(int sig) 
 {
     pid_t pid;
